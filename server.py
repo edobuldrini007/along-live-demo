@@ -13,7 +13,7 @@ from typing import Literal
 
 import qrcode
 from fastapi import FastAPI, Header, HTTPException
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, Response, RedirectResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
 BASE = Path(__file__).resolve().parent
@@ -69,6 +69,31 @@ def group_state(room):
 def auth(room,key):
     if not secrets.compare_digest(room["admin"],key):
         raise HTTPException(403,"Presenter key required")
+
+@app.get("/join/{origin}")
+def join_current_session(origin: str):
+    """Stable public QR URL that joins the most recently created live classroom session."""
+    if origin not in ("sang", "tai"):
+        raise HTTPException(404, "Unknown building")
+    with lock:
+        active_code = next(reversed(rooms), None)
+    if active_code:
+        return RedirectResponse(
+            f"/?room={active_code}&origin={origin}", status_code=302,
+            headers={"Cache-Control": "no-store, private"}
+        )
+    return HTMLResponse(
+        '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<meta http-equiv="refresh" content="5">'
+        '<title>ALONG - waiting for session</title></head>'
+        '<body style="font:18px system-ui,sans-serif;max-width:580px;margin:14vh auto;'
+        'padding:24px;color:#202020"><h1 style="color:#ff5964">ALONG</h1>'
+        '<h2>Waiting for the presentation session</h2>'
+        '<p>Ask the presenter to click <strong>Create presentation session</strong>'
+        '. This page checks again every five seconds.</p></body></html>',
+        headers={"Cache-Control": "no-store, private"}
+    )
 
 @app.get("/")
 def index():
